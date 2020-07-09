@@ -28,8 +28,9 @@ get the uncertainty scores in uncertainty_scores.py
 * If data is vector-based, see function softlabels(x_s, y_s, x_t, y_t, task) in train.py for reference; If image-based, see function train_end2end_alter(source, target, task) in train_e2e.py for reference. Comments are generally made in train.py
 
 #### Dataset tree (example)
-Provides what the dataset folder should look like
-.
+Provides what the dataset folder should look like:
+
+
 ├── Art
 
 ├── Clipart
