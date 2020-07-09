@@ -19,8 +19,8 @@ We propose **RESCUE**, an end-to-end calibrated classification framework. In par
 
 We provide the introduction to the folders and files in this section.
 
-* office/ and OfficeHome/ contains the raw images data. Data can be found and downloaded from https://github.com/jindongwang/transferlearning/tree/master/data
-* aligned_data/ is for saving the aligned data generated from Deep CORAL models. models/ is for saving trained models
+* Create two folders: office/ and OfficeHome/ to contain the raw images data. Data can be found and downloaded from https://github.com/jindongwang/transferlearning/tree/master/data
+* Create aligned_data/ for saving the aligned data generated from Deep CORAL models. models/ is for saving trained models
 * model_layers.py defines the foundations of IW and RESCUE models, and all other Python files can be directly run
 * Some programs support self-defined arguments, you can change it via command or modify the code
 * **If you use the code for new tasks and only need our best model, focus on train.py and model_layers.py**, note that we
