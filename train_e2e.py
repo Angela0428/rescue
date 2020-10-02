@@ -1,6 +1,5 @@
 """
-Experiment on different datasets end-to-end.
-Difference with train.py: deeper network, different data
+Experiment on different datasets with Importance Weighting method
 """
 
 import numpy as np
@@ -11,7 +10,7 @@ import torchvision
 from sklearn.preprocessing import OneHotEncoder
 import torch.nn.functional as F
 import torch.utils.data as Data
-from model_layers import ClassifierLayer, GradLayer, IWLayer
+from model_layers import ClassifierLayer, RatioEstimationLayer, Flatten, GradLayer, IWLayer
 import os
 import argparse
 import heapq
@@ -589,6 +588,7 @@ def train_end2end_fixed(source, target, task):
     torch.save(theta.state_dict(), "models/theta_rba_fixed_" + task + ".pkl")
     return theta, discriminator
 
+
 def load_model(source, target, task):
     print("Test saved model")
     #test_loader = dataloader("office/", target, 32, True, None)
@@ -668,3 +668,4 @@ if __name__=="__main__":
                 print ("Source distribution: %s; Target distribution: %s" % (source, target))
                 task_name = source[0]+target[0]
                 train_end2end_fixed(source, target, task_name)
+   

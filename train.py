@@ -10,7 +10,7 @@ import torch.nn as nn
 from sklearn.preprocessing import OneHotEncoder
 import torch.nn.functional as F
 import torch.utils.data as Data
-from model_layers import ClassifierLayer, GradLayer, IWLayer
+from model_layers import ClassifierLayer, RatioEstimationLayer, Flatten, GradLayer, IWLayer
 import os
 import argparse
 from torch.utils.tensorboard import SummaryWriter
@@ -127,6 +127,55 @@ class thetaNet(nn.Module):
         x = self.classifier(x_s, y_s, r)
         return x
 
+class iid_theta(nn.Module):
+    def __init__(self, n_features, n_output):
+        super(iid_theta, self).__init__()
+        self.net = torch.nn.Sequential(
+            nn.Linear(n_features, 1024),
+            nn.Tanh(),
+            nn.Linear(1024, 512),
+            nn.Tanh(),
+
+            #nn.Linear(512, 512),
+            #nn.Tanh(),
+            #nn.Linear(512, 512),
+            #nn.Tanh(),
+            #nn.Linear(512, 512),
+            #nn.Tanh(),
+            #nn.Linear(512, 256),
+            #nn.Tanh(),
+            #torch.nn.Linear(256, 64),
+            torch.nn.Linear(512, n_output),
+        )
+
+    def forward(self, x):
+        x = self.net(x)
+        return x
+
+class IWNet(nn.Module):
+     def __init__(self, n_features, n_output):
+        super(IWNet, self).__init__()
+        self.extractor = torch.nn.Sequential(
+            nn.Linear(n_features, 1024),
+            nn.Tanh(),
+            nn.Linear(1024, 512),
+            nn.Tanh(),
+            #nn.Linear(512, 512),
+            #nn.Tanh(),
+            #nn.Linear(512, 512),
+            #nn.Tanh(),
+            #nn.Linear(512, 512),
+            #nn.Tanh(),
+            #nn.Linear(512, 256),
+            #nn.Tanh(),
+            #torch.nn.Linear(1024, 64),
+        )
+        self.IW = IWLayer(512, n_output)
+
+     def forward(self, x_s, y_s, r):
+         x_s = self.extractor(x_s)
+         x = self.IW(x_s, y_s, r)
+         return x
 
 def entropy(p):
     p[p<1e-20] = 1e-20
@@ -150,13 +199,11 @@ CONFIG = {
 
 LOGDIR = os.path.join("runs", datetime.now().strftime("%Y%m%d%H%M%S"))
 
-# softlabels define the best model, this one consists the things we recommend
+
 def softlabels(x_s, y_s, x_t, y_t, task):
     ## RBA training
     ## Changes the hard labels of the original dataset to soft ones (probabilities), such as (0.5, 0.5) for samples with large density ratio in the target domain
     ## Trained with adversarial principle
-
-    # Define the basics here
     BATCH_SIZE = CONFIG["batch_size"]
     MAX_ITER = 300
     OUT_ITER = 5
@@ -168,7 +215,6 @@ def softlabels(x_s, y_s, x_t, y_t, task):
                                        weight_decay=0)
     optimizer_dis = torch.optim.Adam(discriminator.parameters(), lr=1e-4, betas=(0.99, 0.999), eps=1e-8,
                                      weight_decay=0)
-    # Load data, change this part according to your preference
     test_dataset = Data.TensorDataset(x_t, y_t)
     test_loader = Data.DataLoader(
         dataset=test_dataset,
@@ -188,12 +234,9 @@ def softlabels(x_s, y_s, x_t, y_t, task):
     whole_label_dis = torch.cat(
         (torch.FloatTensor([1, 0]).repeat(n_train, 1), torch.FloatTensor([0, 1]).repeat(n_test, 1)), dim=0)
     print "Originally %d source data, %d target data" % (n_train, n_test)
-    # record training and testing metrics
     train_loss_list = []
     test_loss_list = []
     test_acc_list = []
-
-    # start training epochs
     for epoch in range(MAX_ITER):
         discriminator.train()
         theta.train()
@@ -201,11 +244,6 @@ def softlabels(x_s, y_s, x_t, y_t, task):
         test_sample_order = np.arange(n_test)
         # np.random.shuffle(train_sample_order)
         # np.random.shuffle(test_sample_order)
-
-        # Data to be converted to train set
-        # The following directly concatenates data into a huge tensor, for large samples and large batch size, the
-        # training is done slowly; Changes can be made to load this thing into another dataloader, and then sample and shuffle
-        # Also note that shuffling is not necessary
         convert_data_idx_s = torch.eq(whole_label_dis[0:n_train, 0], CONFIG["interval_prob"][0]).nonzero().view(
             -1, ).cpu().numpy()
         remain_data_idx_t = torch.eq(whole_label_dis[n_train:n_train + n_test, 1], 1).nonzero().view(-1, ).cpu().numpy()
@@ -241,7 +279,6 @@ def softlabels(x_s, y_s, x_t, y_t, task):
             p_s = prediction[:, 0].reshape(-1, 1)
             p_t = prediction[:, 1].reshape(-1, 1)
             r = p_s / p_t
-
             # Separate source sample density ratios from target sample density ratios
             pos_source, pos_target = np.zeros((BATCH_SIZE,)), np.zeros((BATCH_SIZE,))
             for idx in range(BATCH_SIZE):
@@ -261,7 +298,6 @@ def softlabels(x_s, y_s, x_t, y_t, task):
             loss_theta = torch.sum(theta_out)
 
             # Backpropagate
-            # Optimize with different frequency
             if (step + 1) % 1 == 0:
                 optimizer_dis.zero_grad()
                 loss_dis.backward(retain_graph=True)
@@ -283,7 +319,6 @@ def softlabels(x_s, y_s, x_t, y_t, task):
             dis_loss += float(loss_dis.detach())
 
         ## Change source to interval section, and only use the changed ones for training
-        # This part has many hyperparameters you can tune, change them based on you data
         if (epoch + 1) % 15 == 0:
             whole_label_dis = torch.cat(
                 (torch.FloatTensor([1, 0]).repeat(n_train, 1), torch.FloatTensor([0, 1]).repeat(n_test, 1)), dim=0)
@@ -303,9 +338,8 @@ def softlabels(x_s, y_s, x_t, y_t, task):
             invert_idx = pos_target[int_convert].astype(np.int32)
             whole_label_dis[invert_idx] = CONFIG["interval_prob"]
 
-        # Evaluation: evaluate the model every OUT_ITER epochs, save the model as well
-        # We do this because no validation data is provided
         if (epoch + 1) % OUT_ITER == 0:
+            # Test current model for every OUT_ITER epochs, save the model as well
             train_loss /= (OUT_ITER * batch_num_train * BATCH_SIZE)
             train_acc /= (OUT_ITER * batch_num_train)
             dis_loss /= (OUT_ITER * batch_num_train * BATCH_SIZE)
@@ -348,11 +382,11 @@ def softlabels(x_s, y_s, x_t, y_t, task):
                 else:
                     best_train_loss = train_loss
                     early_stop = 0
-                torch.save(discriminator, "models/dis_rba_alter_aligned_" + task + ".pkl")
-                torch.save(theta.state_dict(), "models/theta_rba_alter_aligned_" + task + ".pkl")
+                #torch.save(discriminator, "models/dis_rba_alter_aligned_" + task + ".pkl")
+                #torch.save(theta.state_dict(), "models/theta_rba_alter_aligned_" + task + ".pkl")
                 train_loss, train_acc, test_loss, test_acc, dis_loss, dis_acc, entropy_dis, entropy_clas, mis_entropy_clas = 0, 0, 0, 0, 0, 0, 0, 0, 0
                 cor_entropy_clas = 0
-        # End training when converges
+    print (train_loss_list)
         #if early_stop > 5:
         #    print "Training Process Converges Until Epoch %s" % (epoch + 1)
         #    break
@@ -546,7 +580,6 @@ def no_softlabel(x_s, y_s, x_t, y_t, task):
         #    print "Training Process Converges Until Epoch %s" % (epoch + 1)
         #    break
 
-# softlabels with relaxed training data
 def softlabels_relaxed(x_s, y_s, x_t, y_t, task):
     from sklearn.metrics import brier_score_loss
     BATCH_SIZE = CONFIG["batch_size"]
@@ -877,8 +910,6 @@ if __name__=="__main__":
     os.environ["CUDA_VISIBLE_DEVICES"] = "3"
     print 'Using device:', DEVICE
     torch.manual_seed(200)
-    # I ignored the parser command so that I can run experiments flexibly, you can
-    # add them back
     # Run different tasks by command: python train_home.py -s XXX -t XXX -d XXX
     #parser = argparse.ArgumentParser()
     #parser.add_argument("-s", "--source", default="RealWorld", help="Source domain")
@@ -931,3 +962,5 @@ if __name__=="__main__":
     softlabels(source_x, source_y, target_x, target_y, task_name)
     print ("\n\nTrain soft labels with relaxed alignment")
     softlabels_relaxed(source_x, source_y, target_x, target_y, task_name)
+
+
